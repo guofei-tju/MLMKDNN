@@ -5,8 +5,8 @@ seed = 12345678;
 nfolds = 5; nruns=1;
 N_features1 = 3;
 N_features2 = 3;
-num_nodes = 2;
-load('../data/dataset.mat')
+
+load('dataset.mat')
 
 
 K1 = [];
@@ -28,18 +28,31 @@ results = [];
 err_list10 = [];
 err_list_all = {};
 l = 1;
+
+% nLayers = 1;num_nodes = 1;lambdas = 0.125;sig1s=1;sig2s=1;p2s=1;p3s=1;gammas=32;
+% nLayers = 1;num_nodes = 2;lambdas = 0.125;sig1s=1;sig2s=1;p2s=5;p3s=1;gammas=32;
+% nLayers = 1;num_nodes = 3;lambdas = 0.125;sig1s=1;sig2s=1;p2s=1 ;p3s=4;gammas=32;
+% nLayers = 1;num_nodes = 4;lambdas = 0.125;sig1s=16;sig2s=1;p2s=1;p3s=5;gammas=32;
+% 
+% nLayers = 2;num_nodes = 1;lambdas = 0.125;sig1s=1;sig2s=1;p2s=1;p3s=1;gammas=32;
+% nLayers = 2;num_nodes = 2;lambdas = 0.125;sig1s=1;sig2s=1;p2s=1;p3s=1;gammas=32;
+% nLayers = 2;num_nodes = 3;lambdas = 0.125;sig1s=1;sig2s=1;p2s=1;p3s=2;gammas=32;
+nLayers = 2;num_nodes = 4;lambdas = 0.125;sig1s=32;sig2s=1;p2s=1;p3s=1;gammas=32;
+
 for run=1:nruns
-    for nLayers = 1
-        for lambda = 0.125%[2^-3,2^-2,2^-1,1,2,2^2,2^3]%[0.5 0.75 1 1.25 1.5]%[2^-5,2^-4,2^-3,2^-2,2^-1,1,2,2^2,2^3,2^4,2^5]
-            for sig1 = 1%[1,2,2^2,2^3,2^4]%[2^-3,2^-2,2^-1,1,2,2^2,2^3]%[0.5 0.75 1 1.25 1.5]%[2^-5,2^-4,2^-3,2^-2,2^-1,1,2,2^2,2^3,2^4,2^5]
-                for sig2 = 1%[1,2,2^2,2^3,2^4]
-                    for p2 = 5%[1,2,3,4,5]
-                        for p3 = 1%[1,2,3,4,5]
-                        for gamma = 32%[2^-3,2^-2,2^-1,1,2,2^2,2^3]
-                              for maxI = 10
+    for nLayer = nLayers
+        for lambda = lambdas
+            for sig1 = sig1s
+                for sig2 = sig2s
+                    for p2 = p2s  
+                        for p3 = p3s
+                        for gamma = gammas
+                            for maxI =10
                                 rand('seed', seed);
                                 crossval_idx = crossvalind('Kfold',y(:),nfolds);
                                 fold_aupr=[];fold_auc=[];
+                                fold_running_time=[];
+                                fold_alpha={};fold_beta = {};
                                 for fold=1:nfolds
                                     t1 = clock;
                                     train_idx = find(crossval_idx~=fold);
@@ -50,14 +63,14 @@ for run=1:nruns
                                     K1(:,:,3) = Knormalized(getGipKernel(y_train,gamma));
                                     K2(:,:,3) = Knormalized(getGipKernel(y_train',gamma));
 %                                     [KD, KL] = GaussianKernel(y_train', 1, 1);
-%                                     K1(:,:,3)=Knormalized(KL);
-%                                     K2(:,:,3)=Knormalized(KD);
+%                                     K1(:,:,4)=kernel_corr(y_train,1,0,1);
+%                                     K2(:,:,4)=kernel_corr(y_train,2,0,1);
                                      [A_cos_com,err_list,betas1,betas1f,betas2,betas2f] = ...
                                          train(K1,K2,y_train,nLayers,lambda,maxI,...
-                                         LR1,LR2,sig1,sig2,p2,p3,N_features1,N_features2,num_nodes);
+                                         LR1,LR2,sig1,sig1,p2,p3,N_features1,N_features2,num_nodes);
                                     % [A_cos_com,betas1,betas2] = deepLap_train(K1,K2,y_train,nLayers,lambda1,lambda2,maxI,LR1,LR2,sig);
                                     t2=clock;
-                                    etime(t2,t1)
+                                    fold_running_time = [fold_running_time;etime(t2,t1)];
 
                                     %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
@@ -74,7 +87,10 @@ for run=1:nruns
                                     fprintf('---------------\nRUN %d - FOLD %d  \n', run, fold)
 
                                     fprintf('%d - FOLD %d - AUPR: %f - AUC: %f\n', run, fold, aupr_LGC_A_KA,AUC_LGC_KA )
-
+                                    
+                                    fold_alpha = [fold_alpha,{betas1;betas1f}];
+                                    fold_beta = [fold_beta,{betas2;betas2f}];
+  
                                     fold_aupr=[fold_aupr;aupr_LGC_A_KA];
                                     fold_auc=[fold_auc;AUC_LGC_KA];
                                     err_list10 = [err_list10;err_list];
@@ -82,13 +98,19 @@ for run=1:nruns
                                     globa_true=[globa_true;test_labels];
                                     globa_predict=[globa_predict;predict_scores];
                                 end
+                                all_predict_results = [globa_true,globa_predict];
+                                newname_all_predict_results = ['results_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers'];
+                                eval([newname_all_predict_results,'=all_predict_results']);
+                                
                                 mean_aupr = mean(fold_aupr)
                                 mean_auc = mean(fold_auc)
-
+                                mean_running_time = mean(fold_running_time)
                                 results = cat(1,results,...
-                                    [run,num_nodes,maxI,nLayers,lambda,sig1,sig2,p2,p3,gamma,mean_aupr,mean_auc]);
+                                    [run,num_nodes,maxI,nLayers,lambda,sig1,sig2,p2,p3,gamma,mean_aupr,mean_auc,mean_running_time]);
                                 save_results(['miRNA_disease_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers_.txt'],results); 
-
+                                save(['miRNA_disease_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers_alpha'],'fold_alpha'); 
+                                save(['miRNA_disease_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers_beta'],'fold_beta');
+                                save(['miRNA_disease_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers_predicted_results'],['results_',num2str(num_nodes),'_nodes_',num2str(nLayers),'_Layers']);
                                 err_list_all{l} = err_list10;
                                 l = l+1;
                                 err_list10 = [];
